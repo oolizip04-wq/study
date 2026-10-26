@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>제주 귤 뽑기</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 16px;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      background: linear-gradient(#bfe6ff 0%, #e8f7ff 60%, #b8e08a 60%, #8fcf5e 100%);
+      color: #3a2a12;
+      user-select: none;
+    }
+    h1 { margin: 0; font-size: 26px; }
+    .sub { margin: 0; font-size: 14px; opacity: .75; }
+    .count {
+      background: #fff;
+      border-radius: 999px;
+      padding: 6px 18px;
+      font-size: 18px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.15);
+    }
+    .count b { color: #f57c00; font-size: 22px; }
+
+    .stage { position: relative; width: min(360px, 90vw); }
+    svg { width: 100%; height: auto; display: block; cursor: pointer; }
+    svg:active .crown { transform: scale(1.02); }
+    .crown { transform-origin: 200px 300px; transition: transform .1s; }
+    .shake .crown { animation: shake .35s; }
+    @keyframes shake {
+      0%, 100% { transform: rotate(0); }
+      25% { transform: rotate(-2deg); }
+      75% { transform: rotate(2deg); }
+    }
+    .fruit { transition: opacity .6s; }
+    .fruit.fall { animation: fall .8s cubic-bezier(.5, 0, 1, .6) forwards; }
+    @keyframes fall {
+      to { transform: translateY(var(--drop)); opacity: .0; }
+    }
+    .fruit.grow { animation: grow .5s ease-out; }
+    @keyframes grow { from { opacity: 0; } to { opacity: 1; } }
+
+    .card {
+      width: min(360px, 90vw);
+      min-height: 120px;
+      background: #fffaf0;
+      border: 3px solid #ff9800;
+      border-radius: 16px;
+      padding: 14px 18px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    }
+    .card.pop { animation: pop .4s ease-out; }
+    @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .jeju { font-size: 24px; font-weight: bold; color: #e65100; margin: 4px 0; }
+    .mean { font-size: 16px; }
+    .hint { opacity: .7; padding-top: 28px; }
+  </style>
+</head>
+<body>
+  <h1>🍊 제주 귤 뽑기</h1>
+  <p class="sub">귤나무를 눌러 보세요!</p>
+  <div class="count">뽑은 귤 <b id="count">0</b>개</div>
+
+  <div class="stage">
+    <svg id="tree" viewBox="0 0 400 420" role="button" aria-label="귤나무">
+      <ellipse cx="200" cy="395" rx="130" ry="18" fill="#6fae44" opacity=".6"/>
+      <path d="M185 395 L190 250 L210 250 L215 395 Z" fill="#8b5a2b"/>
+      <g class="crown">
+        <circle cx="200" cy="160" r="115" fill="#3f9a3a"/>
+        <circle cx="120" cy="200" r="70" fill="#4aa844"/>
+        <circle cx="285" cy="200" r="72" fill="#4aa844"/>
+        <circle cx="200" cy="90" r="70" fill="#4cae46"/>
+        <g id="fruits"></g>
+      </g>
+    </svg>
+  </div>
+
+  <div class="card" id="card">
+    <div class="hint">귤나무를 누르면 제주어 덕담이 나와요 🌴</div>
+  </div>
+
+  <script>
+    var blessings = [
+      { jeju: '혼저 옵서예', mean: '어서 오세요' },
+      { jeju: '폭삭 속았수다', mean: '정말 수고 많으셨습니다' },
+      { jeju: '혼저 먹읍서', mean: '어서 드세요' },
+      { jeju: '하영 먹읍서', mean: '많이 드세요' },
+      { jeju: '고맙수다', mean: '고맙습니다' },
+      { jeju: '사랑햄수다', mean: '사랑합니다' },
+      { jeju: '복 하영 받읍서', mean: '복 많이 받으세요' },
+      { jeju: '펜안히 갑서', mean: '편안히 가세요' },
+      { jeju: '잘 햄신게', mean: '잘 하고 있구나' }
+    ];
+
+    // 귤이 달리는 자리 (x, y)
+    var spots = [
+      [150, 120], [220, 100], [265, 150], [110, 170],
+      [190, 175], [245, 215], [150, 230], [305, 205]
+    ];
+
+    var NS = 'http://www.w3.org/2000/svg';
+    var fruitsEl = document.getElementById('fruits');
+    var countEl = document.getElementById('count');
+    var cardEl = document.getElementById('card');
+    var treeEl = document.getElementById('tree');
+    var count = 0;
+    var busy = false;
+    var lastIdx = -1;
+
+    function makeFruit(x, y) {
+      var g = document.createElementNS(NS, 'g');
+      g.setAttribute('class', 'fruit grow');
+      g.style.setProperty('--drop', (395 - y - 12) + 'px');
+      var c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', 17);
+      c.setAttribute('fill', '#ff9800'); c.setAttribute('stroke', '#e65100'); c.setAttribute('stroke-width', 2);
+      var shine = document.createElementNS(NS, 'circle');
+      shine.setAttribute('cx', x - 6); shine.setAttribute('cy', y - 6); shine.setAttribute('r', 4);
+      shine.setAttribute('fill', '#ffd180');
+      var leaf = document.createElementNS(NS, 'ellipse');
+      leaf.setAttribute('cx', x + 2); leaf.setAttribute('cy', y - 17); leaf.setAttribute('rx', 7);
+      leaf.setAttribute('ry', 3.5); leaf.setAttribute('fill', '#2e7d32');
+      g.appendChild(c); g.appendChild(shine); g.appendChild(leaf);
+      return g;
+    }
+
+    function regrow() {
+      fruitsEl.innerHTML = '';
+      spots.forEach(function (s) { fruitsEl.appendChild(makeFruit(s[0], s[1])); });
+    }
+
+    function pickBlessing() {
+      var i;
+      do { i = Math.floor(Math.random() * blessings.length); } while (i === lastIdx);
+      lastIdx = i;
+      return blessings[i];
+    }
+
+    function showCard(b) {
+      cardEl.innerHTML =
+        '<div style="font-size:30px">🍊</div>' +
+        '<div class="jeju">' + b.jeju + '</div>' +
+        '<div class="mean">(' + b.mean + ')</div>';
+      cardEl.classList.remove('pop');
+      void cardEl.offsetWidth;
+      cardEl.classList.add('pop');
+    }
+
+    treeEl.addEventListener('click', function () {
+      if (busy) return;
+      var fruits = fruitsEl.querySelectorAll('.fruit:not(.fall)');
+      if (!fruits.length) return;
+      busy = true;
+
+      treeEl.classList.remove('shake');
+      void treeEl.offsetWidth;
+      treeEl.classList.add('shake');
+
+      var f = fruits[Math.floor(Math.random() * fruits.length)];
+      f.classList.remove('grow');
+      f.classList.add('fall');
+
+      count++;
+      countEl.textContent = count;
+      showCard(pickBlessing());
+
+      setTimeout(function () {
+        f.remove();
+        if (!fruitsEl.querySelector('.fruit')) setTimeout(regrow, 500);
+        busy = false;
+      }, 800);
+    });
+
+    regrow();
+  </script>
+</body>
+</html>
